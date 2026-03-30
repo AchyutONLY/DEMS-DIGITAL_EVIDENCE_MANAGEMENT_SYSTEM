@@ -10,7 +10,6 @@ class UserBase(BaseModel):
 
 
 class UserCreate(UserBase):
-    Username: str
     Password: str
 
 
@@ -21,6 +20,7 @@ class UserUpdate(BaseModel):
     Contact: str | None = None
     Status: str | None = None
     LastLogin: datetime | None = None
+    Password: str | None = None
 
 
 class UserResponse(UserBase):

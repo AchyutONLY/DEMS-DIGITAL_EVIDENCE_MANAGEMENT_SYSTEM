@@ -3,26 +3,36 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
 from app.schemas.users import UserCreate, UserUpdate, UserResponse
-from app.utils.hashing import hash_password
-from app.utils.auth import get_current_user
 
 router = APIRouter(prefix="/users", tags=["Users"])
-@router.get("/profile")
-def profile(current_user: User=Depends(get_current_user)):
-    return current_user
+
+from sqlalchemy.exc import SQLAlchemyError
 
 @router.post("/", response_model=UserResponse)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
-    print(user.dict())
-    new_user = User(
-        Username=user.Username,
-        Password=hash_password(user.Password),
-        Role=user.Role
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return new_user
+    try:
+        existing = db.query(User).filter(User.BadgeNumber == user.BadgeNumber).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="BadgeNumber already exists")
+
+        new_user = User(
+            Name=user.Name,
+            Role=user.Role,
+            BadgeNumber=user.BadgeNumber,
+            Contact=user.Contact,
+            Status=user.Status,
+            Password=user.Password
+        )
+
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return new_user
+
+    except Exception as e:
+        db.rollback()
+        print(" ERROR:", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/", response_model=list[UserResponse])
 def get_users(db: Session = Depends(get_db)):
@@ -41,7 +51,12 @@ def update_user(user_id: int, data: UserUpdate, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    for field, value in data.dict(exclude_unset=True).items():
+    update_data = data.dict(exclude_unset=True)
+
+    if "Password" in update_data:
+        update_data["Password"] = update_data.pop("Password")
+
+    for field, value in update_data.items():
         setattr(user, field, value)
 
     db.commit()
