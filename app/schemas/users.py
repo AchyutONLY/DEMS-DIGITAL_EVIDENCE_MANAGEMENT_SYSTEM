@@ -16,16 +16,21 @@ class UserCreate(UserBase):
 class UserUpdate(BaseModel):
     Name: str | None = None
     Role: str | None = None
-    BadgeNumber: str | None = None
     Contact: str | None = None
     Status: str | None = None
-    LastLogin: datetime | None = None
     Password: str | None = None
 
 
 class UserResponse(UserBase):
     UserID: int
     LastLogin: datetime | None = None
+
+    model_config = {
+        "from_attributes": True
+    }
+class UserResponseCreate(BaseModel):
+    UserID: int
+    BadgeNumber: str
 
     model_config = {
         "from_attributes": True

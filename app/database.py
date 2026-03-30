@@ -1,21 +1,21 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker,declarative_base
-from dotenv import load_dotenv
-import os
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from .config import settings
 
-load_dotenv()
+SQLALCHEMY_DATABASE_URL = f'postgresql://{settings.database_username}@{settings.database_hostname}:{settings.database_port}/{settings.database_name}'
 
-DATABASE_URL=os.getenv("DB_URL")
+# DATABASE_URL = "postgresql://postgres:mysecretpassword@db:5432/mydatabase"
 
-engine=create_engine(DATABASE_URL) # connecting fastapi with db.
-SessionLocal=sessionmaker(bind=engine,autoflush=False,autocommit=False) # opened for query , query does its work , closes connection when query overs or reqest overs.
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
-Base=declarative_base() # this is like defineing structure of tuples.
+SessionLocal = sessionmaker(autoflush=False,autocommit = False,bind=engine)
+
+Base = declarative_base()
 
 def get_db():
-    db=SessionLocal()
+    db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
-

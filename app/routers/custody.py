@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.custody import CustodyRecords
+from models import CustodyRecords
 from app.schemas.custody import CustodyCreate, CustodyUpdate, CustodyResponse
 
 router = APIRouter(prefix="/custody", tags=["Custody"])
+
+
 
 @router.post("/", response_model=CustodyResponse)
 def add_custody(data: CustodyCreate, db: Session = Depends(get_db)):
@@ -14,9 +16,13 @@ def add_custody(data: CustodyCreate, db: Session = Depends(get_db)):
     db.refresh(new_record)
     return new_record
 
+
+
 @router.get("/", response_model=list[CustodyResponse])
 def list_custody(db: Session = Depends(get_db)):
     return db.query(CustodyRecords).all()
+
+
 
 @router.get("/{record_id}", response_model=CustodyResponse)
 def get_record(record_id: int, db: Session = Depends(get_db)):
@@ -24,6 +30,8 @@ def get_record(record_id: int, db: Session = Depends(get_db)):
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
     return record
+
+
 
 @router.put("/{record_id}", response_model=CustodyResponse)
 def update_record(record_id: int, data: CustodyUpdate, db: Session = Depends(get_db)):
@@ -37,6 +45,8 @@ def update_record(record_id: int, data: CustodyUpdate, db: Session = Depends(get
     db.commit()
     db.refresh(record)
     return record
+
+
 
 @router.delete("/{record_id}")
 def delete_record(record_id: int, db: Session = Depends(get_db)):
