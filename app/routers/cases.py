@@ -241,7 +241,7 @@ def get_case(db: Session = Depends(get_db),current_user:User = Depends(oauth2.ge
 
     return cases
 @router.get("/assigned/{officer_id}", response_model=list[CaseOut])
-def get_case(officer_id:int,db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
+def get_case_officer(officer_id:int,db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
     if current_user.Role != RoleEnum.inspector:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

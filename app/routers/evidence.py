@@ -218,7 +218,7 @@ def update_evidence(evidence_id: int, data: EvidenceUpdate, db: Session = Depend
     update_data = data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         old_value = getattr(ev, field)
-    setattr(ev, field, value)
+        setattr(ev, field, value)
     change_details.append(f"{field}: {old_value} -> {value}")
 
     Detail_Logs = f"Updated Evidence id:{ev.EvidenceID}, Changes: {', '.join(change_details)}"
