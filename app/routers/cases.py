@@ -35,11 +35,12 @@ def create_case(
         Type=case.Type,
         Status=case.Status,
         Description=case.Description,
-        DateOpened=datetime.now(timezone.utc)
+        DateOpened=datetime.now(timezone.utc),
+        ActingInspectorID = current_user.UserID
     )
 
     # Add to DB and flush to get the CaseID without committing yet
-    db.add(new_case)
+    db.add( new_case)
     db.flush()  # Ensures new_case.CaseID is generated
 
     # Assign officers if any
@@ -78,7 +79,7 @@ def create_case(
 
 @router.get("/", response_model=list[CaseOut],)
 def get_cases(db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user),limit: int = 10,
-    is_active:str = None,
+    is_active:Optional[str] = None,
     skip: int = 0,
     search: Optional[str] = None):
     if (current_user.Role) == RoleEnum.officer:
@@ -113,6 +114,11 @@ def assign_officers(officer_ids:OfficerAssign,case_id:int,db: Session = Depends(
     if not case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
                             detail="Case not found")
+    if case.ActingInspectorID != current_user.UserID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not Your Case"
+        )
     
     if not officer_ids:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
@@ -164,10 +170,17 @@ def get_assigned_officer_Case_id(case_id: int, db: Session = Depends(get_db),
         )
     
     case = db.query(Case).filter(Case.CaseID == case_id).first()
+    
     if not case:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Case not found"
+        )
+    
+    if case.ActingInspectorID != current_user.UserID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not Your Case"
         )
     
     # Query just the AssignedOfficerId column
@@ -194,9 +207,16 @@ def remove_officers(officer_ids:OfficerAssign,case_id:int,db: Session = Depends(
             detail="Only Inspectors can remove Officers"
         )
     case = db.query(Case).filter(Case.CaseID == case_id).first()
+
     if not case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
                             detail="Case not found")
+    
+    if case.ActingInspectorID != current_user.UserID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not Your Case"
+        )
     
     if not officer_ids:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
@@ -226,6 +246,10 @@ def remove_officers(officer_ids:OfficerAssign,case_id:int,db: Session = Depends(
 
 @router.get("/assigned", response_model=list[CaseOut])
 def get_case(db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
+    if current_user.Role == RoleEnum.inspector:
+        cases = db.query(Case).filter(Case.ActingInspectorID == current_user.UserID).all()
+        return cases
+    
     cases = db.query(Case).join(CaseAssignment).filter(
         CaseAssignment.AssignedOfficerId == current_user.UserID
     ).all() 
@@ -242,15 +266,25 @@ def get_case(db: Session = Depends(get_db),current_user:User = Depends(oauth2.ge
     return cases
 @router.get("/assigned/{officer_id}", response_model=list[CaseOut])
 def get_case_officer(officer_id:int,db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
+
     if current_user.Role != RoleEnum.inspector:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only Inspector can see the assigned Cases to Any officer"
         )
+    
     user = db.query(User).filter(User.UserID == officer_id).first()
+
+
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND
                             , detail=f"No Officer with ID {officer_id}")
+    
+    if user.Role != RoleEnum.officer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="the give id is Not of a Officer"
+        )
     cases = db.query(Case).join(CaseAssignment).filter(
         CaseAssignment.AssignedOfficerId == officer_id
     ).all() 
@@ -269,17 +303,24 @@ def get_case_officer(officer_id:int,db: Session = Depends(get_db),current_user:U
 
 @router.put("/{case_id}", response_model=CaseOut)
 def update_case(case_id: int, update_data: CaseUpdate, db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
-    if (current_user.Role) == RoleEnum.officer:
+    if (current_user.Role) != RoleEnum.inspector:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Inspectors/Admins are allowed to update case data"
+            detail="Only Inspectors are allowed to update case data"
         )
+    
     case = db.query(Case).filter(Case.CaseID == case_id).first()
+
     if not case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND
                             , detail="Case not found")
 
-
+    if case.ActingInspectorID != current_user.UserID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not Your Case"
+        )
+    
     update_details = []
     for key, value in update_data.model_dump(exclude_unset=True).items():
         old_value = getattr(case, key)
@@ -297,16 +338,21 @@ def update_case(case_id: int, update_data: CaseUpdate, db: Session = Depends(get
 @router.put("/{case_id}/close", response_model=CaseOut)
 def close_case(case_id: int, db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
 
-    if (current_user.Role) == RoleEnum.officer:
+    if (current_user.Role) != RoleEnum.inspector:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Inspectors/Admins are allowed to Close a Case"
+            detail="Only Inspectors are allowed to Close a Case"
         )
 
     case = db.query(Case).filter(Case.CaseID == case_id).first()
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
 
+    if case.ActingInspectorID != current_user.UserID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not Your Case"
+        )
     case.Status = IsActive.inactive
     case.DateClosed = datetime.now(timezone.utc)
 
@@ -329,6 +375,12 @@ def delete_case(case_id: int, db: Session = Depends(get_db),current_user:User = 
     if not case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND
                             , detail="Case not found")
+    
+    if case.ActingInspectorID != current_user.UserID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not Your Case"
+        )
     Detail_Logs = (
     f"Deleted Case ID:{case.CaseID}, Title:{case.Title}, "
     f"Type:{case.Type}, Status:{case.Status}, Description:{case.Description}"

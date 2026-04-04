@@ -17,7 +17,7 @@ router = APIRouter(prefix="/evidence", tags=["Evidence"])
 from fastapi import File, UploadFile, Form
 import shutil
 import os
-import uuid
+
 
 UPLOAD_DIR = "evidences"
 

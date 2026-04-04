@@ -13,6 +13,7 @@ class AuditLog(Base):
     UserID = Column(Integer, ForeignKey("users.UserID", ondelete="SET NULL"), nullable=True)
     EventType = Column(String,nullable=False)
     Details = Column(Text,nullable=True)
+    
 
 class Case(Base):
     __tablename__ = "cases"
@@ -24,7 +25,7 @@ class Case(Base):
     DateOpened = Column(TIMESTAMP,nullable=False,server_default=func.now())
     DateClosed = Column(TIMESTAMP,nullable=True)
     Description = Column(Text, nullable=True)
-
+    ActingInspectorID = Column(Integer,nullable=False)
 
 
 class CustodyRecords(Base):
