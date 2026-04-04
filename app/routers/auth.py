@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from .. import database,models,utils,oauth2
 from datetime import datetime,timezone
 from app.schemas import auth
+from app.schemas.users import UserResponse
 from sqlalchemy.exc import SQLAlchemyError
 from app.schemas.is_active import IsActive
 from app.schemas.audit_event import AuditEvent
@@ -11,6 +12,11 @@ from app.schemas.audit import AuditCreate
 from app.utils import create_log
 
 router = APIRouter(tags=['Authentication'])
+
+
+@router.get("/me", response_model=UserResponse)
+def get_me(current_user: models.User = Depends(oauth2.get_current_user)):
+    return current_user
 
 
 @router.post("/login",response_model=auth.Token)

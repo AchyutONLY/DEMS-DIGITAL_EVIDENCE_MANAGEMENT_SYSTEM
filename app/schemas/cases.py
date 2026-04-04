@@ -26,6 +26,7 @@ class CaseUpdate(BaseModel):
 
 class CaseOut(CaseBase):
     CaseID: int
+    ActingInspectorID: int
     DateOpened: datetime
     DateClosed: Optional[datetime]
 
