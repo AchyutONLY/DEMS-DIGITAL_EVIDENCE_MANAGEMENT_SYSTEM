@@ -14,7 +14,9 @@ from app.schemas.audit import AuditCreate
 from app.utils import create_log
 router = APIRouter(prefix="/users", tags=["Users"])
 
+# Only Admins
 
+#  ------------------------------------------------------------------------------------------------------------------------------
 
 @router.post("/",status_code=status.HTTP_201_CREATED ,response_model=UserResponseCreate)
 def create_user(user: UserCreate, db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
@@ -51,10 +53,13 @@ def create_user(user: UserCreate, db: Session = Depends(get_db),current_user:Use
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail="Internal Server Error")
 
+# ------------------------------------------------------------------------------------------------------------------------------
+
 
 @router.get("/", response_model=list[UserResponse])
 def get_users(
     db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user),
+    badge_num:str = None,
     status_isActive: str = None,
     limit: int = 10,
     skip: int = 0,
@@ -66,7 +71,8 @@ def get_users(
             detail="Admins are allowed to view members"
         )
     query = db.query(User)
-
+    if badge_num:
+        query = query.filter(User.BadgeNumber == badge_num)
     if search:
         query = query.filter(User.Name.ilike(f"%{search}%"))
     if status_isActive:
@@ -77,25 +83,7 @@ def get_users(
 
     return query.offset(skip).limit(limit).all()
 
-
-
-@router.get("/{badge_num}", response_model=UserResponse)
-def get_user(badge_num: str, db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
-    if (current_user.Role) != RoleEnum.admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admins are allowed to view a member"
-        )
-    user = db.query(User).filter(User.BadgeNumber == badge_num).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found")
-    
-    Detail_Logs = f"Viewed User BadgeNumber:{user.BadgeNumber}"
-    logs = AuditCreate(UserID=current_user.UserID, EventType=AuditEvent.read, Details=Detail_Logs)
-    create_log(logs, db)
-    return user
+#  ------------------------------------------------------------------------------------------------------------------------------
 
 
 @router.put("/{badge_num}", response_model=UserResponse)
@@ -138,6 +126,8 @@ def update_user(badge_num: str, data: UserUpdate, db: Session = Depends(get_db),
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                              detail="Database Error unable to Update details")
+    
+#  ------------------------------------------------------------------------------------------------------------------------------
 
 @router.delete("/{badge_num}",status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(badge_num: str, db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):

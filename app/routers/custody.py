@@ -12,7 +12,7 @@ from app.utils import create_log
 
 
 router = APIRouter(prefix="/custody", tags=["Custody"])
-
+#  ---------------------------------------------------------------------------------------------------------------------
 
 @router.post("/", response_model=CustodyResponse, status_code=status.HTTP_201_CREATED)
 def add_custody(
@@ -21,7 +21,7 @@ def add_custody(
     current_user=Depends(oauth2.get_current_user)
 ):
     # Only admins or inspectors can add custody records
-    if current_user.Role not in [RoleEnum.admin, RoleEnum.inspector]:
+    if current_user.Role == RoleEnum.officer:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Not authorized to add custody records")
 
@@ -45,16 +45,20 @@ def add_custody(
     create_log(log_entry, db)
     return new_record
 
-
-@router.get("/", response_model=list[CustodyResponse])
+#  ----------------------------------------------------------------------------------------------------
+@router.get("/", response_model=list[CustodyResponse]) # All
 def list_custody(
     db: Session = Depends(get_db),
     current_user=Depends(oauth2.get_current_user),
     limit: int = 10,
     skip: int = 0,
-    ActingOfficerID: int = None
+    ActingOfficerID: int = None,
+    Evidence_id:int = None,
 ):
     query = db.query(CustodyRecords)
+
+    if Evidence_id:
+        query = query.filter(CustodyRecords.EvidenceID == Evidence_id)
 
     if ActingOfficerID:
         query = query.filter(CustodyRecords.ActingOfficerID == ActingOfficerID)
@@ -65,7 +69,7 @@ def list_custody(
     return query.offset(skip).limit(limit).all()
 
 
-@router.get("/{record_id}", response_model=CustodyResponse)
+@router.get("/{record_id}", response_model=CustodyResponse) #All
 def get_record(
     record_id: int,
     db: Session = Depends(get_db),
@@ -81,6 +85,7 @@ def get_record(
 
     return record
 
+#  ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 @router.put("/{record_id}", response_model=CustodyResponse)
 def update_record(
@@ -90,7 +95,7 @@ def update_record(
     current_user=Depends(oauth2.get_current_user)
 ):
     # Only admins or inspectors can update
-    if current_user.Role not in [RoleEnum.admin, RoleEnum.inspector]:
+    if current_user.Role == RoleEnum.officer:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Not authorized to update custody records")
 
@@ -112,7 +117,7 @@ def update_record(
     db.refresh(record)
     return record
 
-
+# ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 @router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_record(
     record_id: int,

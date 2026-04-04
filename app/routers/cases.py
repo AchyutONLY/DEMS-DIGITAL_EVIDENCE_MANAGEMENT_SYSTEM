@@ -17,16 +17,19 @@ from .. import oauth2
 
 router = APIRouter(prefix="/cases", tags=["Cases"])
 
+#  ------------------------------------------------------------------------------------------------------------------------------
+# Post only Inspector
+
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=CaseOut)
 def create_case(
     case: CaseCreate, 
     db: Session = Depends(get_db), 
     current_user: User = Depends(oauth2.get_current_user)
 ):
-    if current_user.Role == RoleEnum.officer:
+    if current_user.Role != RoleEnum.inspector:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Officers are not allowed to create cases"
+            detail="Only Inspectors are allowed to create cases"
         )
 
     # Create the case instance
@@ -77,31 +80,6 @@ def create_case(
     return new_case
 
 
-@router.get("/", response_model=list[CaseOut],)
-def get_cases(db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user),limit: int = 10,
-    is_active:Optional[str] = None,
-    skip: int = 0,
-    search: Optional[str] = None):
-    if (current_user.Role) == RoleEnum.officer:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Inspectors/Admins are allowed to see all the cases"
-        )
-    query = db.query(Case)
-    if search:
-        query = query.filter(Case.Title.ilike(f"%{search}%"))
-    
-    if is_active:
-        query = query.filter(Case.Status == is_active)
-
-    Detail_Logs = (
-    f"Viewed Cases list by UserID:{current_user.UserID}, "
-    f"Search:{search}, StatusFilter:{is_active}, Limit:{limit}, Skip:{skip}"
-    )
-    logs = AuditCreate(UserID=current_user.UserID, EventType=AuditEvent.read, Details=Detail_Logs)
-    create_log(logs, db)
-
-    return query.offset(skip).limit(limit).all()
 
 @router.post("/{case_id}/assign")
 def assign_officers(officer_ids:OfficerAssign,case_id:int,db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
@@ -160,13 +138,88 @@ def assign_officers(officer_ids:OfficerAssign,case_id:int,db: Session = Depends(
 
     return {"message":f"assigned {count} officers to case with id: {case_id}"}
 
-@router.get("/assigned-officers/{case_id}",response_model=List[AssignedOfficersResponse])
-def get_assigned_officer_Case_id(case_id: int, db: Session = Depends(get_db),
-                                 current_user: User = Depends(oauth2.get_current_user)):
-    if current_user.Role != RoleEnum.inspector:
+
+
+@router.post("/{case_id}/remove-officers",status_code=status.HTTP_204_NO_CONTENT)
+def remove_officers(officer_ids:OfficerAssign,case_id:int,db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
+    if (current_user.Role) != RoleEnum.inspector:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Inspectors can assign Officers"
+            detail="Only Inspectors can remove Officers"
+        )
+    case = db.query(Case).filter(Case.CaseID == case_id).first()
+
+    if not case:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
+                            detail="Case not found")
+    
+    if case.ActingInspectorID != current_user.UserID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not Your Case"
+        )
+    
+    if not officer_ids.officer_ids:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail=f"No Officer ID's were passed")
+    
+    for officer_id in officer_ids.officer_ids:
+        assignment = db.query(CaseAssignment).filter(
+            CaseAssignment.CaseID == case_id,
+            CaseAssignment.AssignedOfficerId == officer_id
+        ).first()
+
+        if not assignment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"{officer_id} not assigned"
+            )
+
+        db.delete(assignment)
+
+    db.commit()
+    Detail_Logs = f"Removed Officers {officer_ids.officer_ids} from Case ID:{case_id}"
+    logs = AuditCreate(UserID=current_user.UserID, EventType=AuditEvent.update, Details=Detail_Logs)
+    create_log(logs, db)
+
+#  ------------------------------------------------------------------------------------------------------------------------------
+
+@router.get("/", response_model=list[CaseOut],) # Admin + Inspector
+def get_cases(db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user),limit: int = 10,
+    is_active:Optional[str] = None,
+    skip: int = 0,
+    search: Optional[str] = None):
+
+    if (current_user.Role) == RoleEnum.officer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Inspectors/Admins are allowed to see all the cases"
+        )
+    query = db.query(Case)
+    if search:
+        query = query.filter(Case.Title.ilike(f"%{search}%"))
+    
+    if is_active:
+        query = query.filter(Case.Status == is_active)
+
+    Detail_Logs = (
+    f"Viewed Cases list by UserID:{current_user.UserID}, "
+    f"Search:{search}, StatusFilter:{is_active}, Limit:{limit}, Skip:{skip}"
+    )
+    logs = AuditCreate(UserID=current_user.UserID, EventType=AuditEvent.read, Details=Detail_Logs)
+    create_log(logs, db)
+
+    return query.offset(skip).limit(limit).all()
+
+
+
+@router.get("/assigned-officers/{case_id}",response_model=List[AssignedOfficersResponse]) # Admin + Inspector(own case)
+def get_assigned_officer_Case_id(case_id: int, db: Session = Depends(get_db),
+                                 current_user: User = Depends(oauth2.get_current_user)):
+    if current_user.Role == RoleEnum.officer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Inspectors/Admins can see assigned Officers"
         )
     
     case = db.query(Case).filter(Case.CaseID == case_id).first()
@@ -199,53 +252,16 @@ def get_assigned_officer_Case_id(case_id: int, db: Session = Depends(get_db),
     return officers
     
 
-@router.post("/{case_id}/remove-officers",status_code=status.HTTP_204_NO_CONTENT)
-def remove_officers(officer_ids:OfficerAssign,case_id:int,db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
-    if (current_user.Role) != RoleEnum.inspector:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Inspectors can remove Officers"
-        )
-    case = db.query(Case).filter(Case.CaseID == case_id).first()
-
-    if not case:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
-                            detail="Case not found")
-    
-    if case.ActingInspectorID != current_user.UserID:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not Your Case"
-        )
-    
-    if not officer_ids:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"No Officer ID's were passed")
-    
-    for officer_id in officer_ids.officer_ids:
-        assignment = db.query(CaseAssignment).filter(
-            CaseAssignment.CaseID == case_id,
-            CaseAssignment.AssignedOfficerId == officer_id
-        ).first()
-
-        if not assignment:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"{officer_id} not assigned"
-            )
-
-        db.delete(assignment)
-
-    db.commit()
-    Detail_Logs = f"Removed Officers {officer_ids.officer_ids} from Case ID:{case_id}"
-    logs = AuditCreate(UserID=current_user.UserID, EventType=AuditEvent.update, Details=Detail_Logs)
-    create_log(logs, db)
-
-    
 
 
-@router.get("/assigned", response_model=list[CaseOut])
+
+
+@router.get("/assigned", response_model=list[CaseOut]) # All (Cases Assigned to itself)
 def get_case(db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
+    if current_user.Role == RoleEnum.admin:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND
+                            , detail=f"No Cases can be assigned to Admins")
+
     if current_user.Role == RoleEnum.inspector:
         cases = db.query(Case).filter(Case.ActingInspectorID == current_user.UserID).all()
         return cases
@@ -264,13 +280,15 @@ def get_case(db: Session = Depends(get_db),current_user:User = Depends(oauth2.ge
     create_log(logs, db)
 
     return cases
-@router.get("/assigned/{officer_id}", response_model=list[CaseOut])
+
+
+@router.get("/assigned/{officer_id}", response_model=list[CaseOut]) #Admin + Inspector (Cases assigned to a Officer)
 def get_case_officer(officer_id:int,db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
 
-    if current_user.Role != RoleEnum.inspector:
+    if current_user.Role == RoleEnum.officer:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Inspector can see the assigned Cases to Any officer"
+            detail="Only Inspector/Admis can see the assigned Cases to Any officer"
         )
     
     user = db.query(User).filter(User.UserID == officer_id).first()
@@ -283,8 +301,9 @@ def get_case_officer(officer_id:int,db: Session = Depends(get_db),current_user:U
     if user.Role != RoleEnum.officer:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="the give id is Not of a Officer"
+            detail="the given Id Does Not belong to a Officer"
         )
+    
     cases = db.query(Case).join(CaseAssignment).filter(
         CaseAssignment.AssignedOfficerId == officer_id
     ).all() 
@@ -293,15 +312,16 @@ def get_case_officer(officer_id:int,db: Session = Depends(get_db),current_user:U
                             , detail=f"No Cases Have been Assigned to Officer with ID {officer_id}")
 
     Detail_Logs = (
-    f"Inspector viewed assigned cases for OfficerID:{officer_id}"
+    f"Inspector/Admin viewed assigned cases for OfficerID:{officer_id}"
     )
     logs = AuditCreate(UserID=current_user.UserID, EventType=AuditEvent.read, Details=Detail_Logs)
     create_log(logs, db)
     return cases
 
 
+#  ------------------------------------------------------------------------------------------------------------------------------
 
-@router.put("/{case_id}", response_model=CaseOut)
+@router.put("/{case_id}", response_model=CaseOut) # Inspector (assigned case)
 def update_case(case_id: int, update_data: CaseUpdate, db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
     if (current_user.Role) != RoleEnum.inspector:
         raise HTTPException(
@@ -335,7 +355,7 @@ def update_case(case_id: int, update_data: CaseUpdate, db: Session = Depends(get
 
     return case
 
-@router.put("/{case_id}/close", response_model=CaseOut)
+@router.put("/{case_id}/close", response_model=CaseOut) # Inspector (assigned case)
 def close_case(case_id: int, db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
 
     if (current_user.Role) != RoleEnum.inspector:
@@ -363,8 +383,10 @@ def close_case(case_id: int, db: Session = Depends(get_db),current_user:User = D
     create_log(logs, db)
     return case
 
+#  ------------------------------------------------------------------------------------------------------------------------------
 
-@router.delete("/{case_id}",status_code=status.HTTP_204_NO_CONTENT)
+
+@router.delete("/{case_id}",status_code=status.HTTP_204_NO_CONTENT) #admin
 def delete_case(case_id: int, db: Session = Depends(get_db),current_user:User = Depends(oauth2.get_current_user)):
     if (current_user.Role) != RoleEnum.admin:
         raise HTTPException(
@@ -376,11 +398,7 @@ def delete_case(case_id: int, db: Session = Depends(get_db),current_user:User = 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND
                             , detail="Case not found")
     
-    if case.ActingInspectorID != current_user.UserID:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not Your Case"
-        )
+    
     Detail_Logs = (
     f"Deleted Case ID:{case.CaseID}, Title:{case.Title}, "
     f"Type:{case.Type}, Status:{case.Status}, Description:{case.Description}"
