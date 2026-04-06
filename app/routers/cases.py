@@ -383,6 +383,51 @@ def close_case(case_id: int, db: Session = Depends(get_db),current_user:User = D
     create_log(logs, db)
     return case
 
+@router.put("/{case_id}/reactivate", response_model=CaseOut) # Officer (assigned) or Acting Inspector
+def reactivate_case(case_id: int, db: Session = Depends(get_db), current_user: User = Depends(oauth2.get_current_user)):
+    if current_user.Role not in [RoleEnum.officer, RoleEnum.inspector]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only assigned officers or acting inspector can reactivate an inactive case"
+        )
+
+    case = db.query(Case).filter(Case.CaseID == case_id).first()
+    if not case:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Case not found")
+
+    if current_user.Role == RoleEnum.officer:
+        assignment = db.query(CaseAssignment).filter(
+            CaseAssignment.CaseID == case_id,
+            CaseAssignment.AssignedOfficerId == current_user.UserID
+        ).first()
+        if not assignment:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not assigned to this case"
+            )
+    else:
+        if case.ActingInspectorID != current_user.UserID:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only acting inspector can reactivate this case"
+            )
+
+    if case.Status != IsActive.inactive:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only inactive cases can be reactivated"
+        )
+
+    case.Status = "Open"
+    case.DateClosed = None
+
+    db.commit()
+    db.refresh(case)
+    Detail_Logs = f"Reactivated Case ID:{case.CaseID}, Title:{case.Title}, ReactivatedByUserID:{current_user.UserID}, Role:{current_user.Role}"
+    logs = AuditCreate(UserID=current_user.UserID, EventType=AuditEvent.update, Details=Detail_Logs)
+    create_log(logs, db)
+    return case
+
 #  ------------------------------------------------------------------------------------------------------------------------------
 
 

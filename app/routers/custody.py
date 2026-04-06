@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import CustodyRecords
+from app.models import EvidenceItems, Case
 from app.schemas.custody import CustodyCreate, CustodyUpdate, CustodyResponse
 from app.schemas.role import RoleEnum
 from .. import oauth2
@@ -24,6 +25,32 @@ def add_custody(
     if current_user.Role != RoleEnum.inspector:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Not authorized to add custody records")
+
+    evidence = db.query(EvidenceItems).filter(EvidenceItems.EvidenceID == data.EvidenceID).first()
+    if not evidence:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Evidence not found"
+        )
+
+    case = db.query(Case).filter(Case.CaseID == evidence.CaseID).first()
+    if not case:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Case not found for evidence"
+        )
+
+    if case.Status == IsActive.inactive:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot add custody to an inactive case"
+        )
+
+    if case.ActingInspectorID != current_user.UserID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only acting inspector of this case can add custody records"
+        )
 
     search_query = db.query(CustodyRecords).filter(CustodyRecords.EvidenceID == data.EvidenceID,
                                                    CustodyRecords.ActingOfficerID == data.ActingOfficerID).first()

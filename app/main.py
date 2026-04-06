@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine,Base
 from app.routers import users, auth,cases,evidence,custody,audit
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -8,23 +9,34 @@ scheduler = BackgroundScheduler()
 from datetime import datetime
 from .config import settings
 
-scheduler.add_job(
-    check_missing_files,
-    "interval",
-    minutes=1,
-    next_run_time=datetime.now()  
-)
+# scheduler.add_job(
+#     check_missing_files,
+#     "interval",
+#     minutes=1,
+#     next_run_time=datetime.now()  
+# )
 
-@app.on_event("startup")
-def start_scheduler():
-    scheduler.add_job(check_missing_files, "interval", minutes=settings.app_scheduling_time)  # ⏱ every 5 min
-    scheduler.start()
+# @app.on_event("startup")
+# def start_scheduler():
+#     scheduler.add_job(check_missing_files, "interval", minutes=settings.app_scheduling_time)  # ⏱ every 5 min
+#     scheduler.start()
 
-@app.on_event("shutdown")
-def stop_scheduler():
-    scheduler.shutdown()
+# @app.on_event("shutdown")
+# def stop_scheduler():
+#     scheduler.shutdown()
 
 Base.metadata.create_all(bind=engine)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(users.router)
 app.include_router(cases.router)
