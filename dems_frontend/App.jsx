@@ -102,7 +102,7 @@ const LoginView = ({ onLogin, isDarkMode, onToggleTheme }) => {
       <ThemeToggle isDark={isDarkMode} onToggle={onToggleTheme} className="theme-toggle-login" />
       <div className="login-card">
         <div className="login-logo">
-          <div className="login-logo-icon">🛡</div>
+          <img src="/logo.jpeg" alt="DEMS logo" className="login-logo-image" />
           <div>
             <div className="login-logo-text">DE<span>MS</span></div>
             <div className="login-subtitle">Digital Evidence Management System</div>
@@ -1158,6 +1158,8 @@ const AuditView = ({ token }) => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [userId, setUserId] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   const [limit, setLimit] = useState(100);
   const [skip, setSkip] = useState(0);
   const [err, setErr] = useState('');
@@ -1168,11 +1170,13 @@ const AuditView = ({ token }) => {
       const params = {};
       if (search) params.search = search;
       if (userId) params.user_id = userId;
+      if (fromDate) params.from_date = `${fromDate}T00:00:00`;
+      if (toDate) params.to_date = `${toDate}T23:59:59.999`;
       params.limit = String(limit);
       params.skip = String(skip);
       setLogs(await api.getAuditLogs(token, params));
     } catch (e) { setErr(e.message); } finally { setLoading(false); }
-  }, [token, search, userId, limit, skip]);
+  }, [token, search, userId, fromDate, toDate, limit, skip]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1191,6 +1195,22 @@ const AuditView = ({ token }) => {
           <div className="table-toolbar-left">
             <input className="search-input" placeholder="Search details…" value={search} onChange={e => setSearch(e.target.value)} />
             <input className="search-input" placeholder="Filter by User ID…" type="number" style={{ width: 160 }} value={userId} onChange={e => setUserId(e.target.value)} />
+            <input
+              className="search-input"
+              type="date"
+              style={{ width: 170 }}
+              value={fromDate}
+              onChange={e => setFromDate(e.target.value)}
+              title="From date (starts at midnight)"
+            />
+            <input
+              className="search-input"
+              type="date"
+              style={{ width: 170 }}
+              value={toDate}
+              onChange={e => setToDate(e.target.value)}
+              title="To date (ends at 23:59:59)"
+            />
             <input
               className="search-input"
               placeholder="Limit"
@@ -1523,7 +1543,7 @@ export default function App() {
       <aside className="sidebar">
         <div className="sidebar-header">
           <div className="sidebar-brand">
-            <div className="sidebar-brand-icon">🛡</div>
+            <img src="/logo.jpeg" alt="DEMS logo" className="sidebar-brand-image" />
             <div className="sidebar-brand-name">DE<span>MS</span></div>
           </div>
           <div className="sidebar-version">v1.0 · Secure</div>
